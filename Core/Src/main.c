@@ -311,6 +311,7 @@ int main(void)
   last_encoder_count = 0;
   
   /* 初始化 OLED */
+  HAL_Delay(60);  // 等待 OLED 穩定
   OLED_Init();
   OLED_NewFrame();
   OLED_PrintString(0, 0, " WATER REMINDER ", &font16x16, OLED_COLOR_NORMAL);
