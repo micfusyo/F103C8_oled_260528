@@ -100,22 +100,16 @@ void update_oled_idle(void)
 {
   static uint32_t last_blink = 0;
   uint32_t now = HAL_GetTick();
-  
   if (now - last_blink < 100) return;  // 100ms 更新一次
   last_blink = now;
-  
   OLED_NewFrame();
-  OLED_PrintString(0, 0, "STANDBY", &font16x16, OLED_COLOR_NORMAL);
-  
+  OLED_PrintString(0, 0, " WATER REMINDER ", &font16x16, OLED_COLOR_NORMAL);
+  OLED_PrintString(0, 16, "STATUS: IDLE    ", &font16x16, OLED_COLOR_NORMAL);
   char buf[32];
-  sprintf(buf, "Time: %d min", set_time_minutes);
-  OLED_PrintString(0, 16, buf, &font16x16, OLED_COLOR_NORMAL);
-  
-  sprintf(buf, "Set: %d", set_time_minutes);
+  sprintf(buf, "TIMER:  %02d mins", set_time_minutes);
   OLED_PrintString(0, 32, buf, &font16x16, OLED_COLOR_NORMAL);
-  
-  OLED_PrintString(0, 48, "Rotate: Set", &font16x16, OLED_COLOR_NORMAL);
-  
+  sprintf(buf, "COUNTDOWN: %02d:%02d", set_time_minutes, 0);
+  OLED_PrintString(0, 48, buf, &font16x16, OLED_COLOR_NORMAL);
   OLED_ShowFrame();
 }
 
@@ -124,20 +118,19 @@ void update_oled_counting(void)
 {
   static uint32_t last_update = 0;
   uint32_t now = HAL_GetTick();
-  
   if (now - last_update < 500) return;  // 500ms 更新一次
   last_update = now;
-  
   OLED_NewFrame();
-  OLED_PrintString(0, 0, "COUNTING DOWN", &font16x16, OLED_COLOR_NORMAL);
-  
+  OLED_PrintString(0, 0, " WATER REMINDER ", &font16x16, OLED_COLOR_NORMAL);
+  OLED_PrintString(0, 16, "STATUS: COUNTING", &font16x16, OLED_COLOR_NORMAL);
   /* 顯示倒計時 */
   uint16_t minutes = remaining_seconds / 60;
   uint16_t seconds = remaining_seconds % 60;
   char buf[32];
-  sprintf(buf, "%02d:%02d", minutes, seconds);
-  OLED_PrintString(0, 16, buf, &font16x16, OLED_COLOR_NORMAL);
-  
+  sprintf(buf, "TIMER:  %02d mins", set_time_minutes);
+  OLED_PrintString(0, 32, buf, &font16x16, OLED_COLOR_NORMAL);
+  sprintf(buf, "COUNTDOWN: %02d:%02d", minutes, seconds);
+  OLED_PrintString(0, 48, buf, &font16x16, OLED_COLOR_NORMAL);
   /* 顯示進度 */
   uint16_t progress = 0;
   if (total_seconds > 0)
@@ -145,10 +138,8 @@ void update_oled_counting(void)
     progress = ((total_seconds - remaining_seconds) * 100) / total_seconds;
   }
   sprintf(buf, "Progress: %d%%", progress);
-  OLED_PrintString(0, 32, buf, &font16x16, OLED_COLOR_NORMAL);
-  
-  OLED_PrintString(0, 48, "Press: Reset", &font16x16, OLED_COLOR_NORMAL);
-  
+  // OLED_PrintString(0, 32, buf, &font16x16, OLED_COLOR_NORMAL);
+  // OLED_PrintString(0, 48, "Press: Reset", &font16x16, OLED_COLOR_NORMAL);
   OLED_ShowFrame();
 }
 
@@ -322,9 +313,10 @@ int main(void)
   /* 初始化 OLED */
   OLED_Init();
   OLED_NewFrame();
-  OLED_PrintString(0, 0, "Drink Water", &font16x16, OLED_COLOR_NORMAL);
-  OLED_PrintString(0, 16, "Reminder", &font16x16, OLED_COLOR_NORMAL);
-  OLED_PrintString(0, 32, "Device", &font16x16, OLED_COLOR_NORMAL);
+  OLED_PrintString(0, 0, " WATER REMINDER ", &font16x16, OLED_COLOR_NORMAL);
+  OLED_PrintString(0, 16, "STATUS: IDLE    ", &font16x16, OLED_COLOR_NORMAL);
+  OLED_PrintString(0, 32, "TIMER:  15 mins ", &font16x16, OLED_COLOR_NORMAL);
+  OLED_PrintString(0, 48, "COUNTDOWN: 15:00", &font16x16, OLED_COLOR_NORMAL);
   OLED_ShowFrame();
   HAL_Delay(1000);
   
