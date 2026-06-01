@@ -1,6 +1,7 @@
 #include "ctrl.h"
 #include "oled.h"
 #include "stdio.h"
+#include "stm32f1xx_hal_cortex.h"
 #include "string.h"
 #include "main.h"
 
@@ -153,31 +154,43 @@ void encoder_task(void)
 /* 按鈕處理 */
 void button_task(void)
 {
-  uint32_t now = HAL_GetTick();
-  
-  /* 防抖 */
-  if (now - last_button_tick < 20) return;
-  
-  if (HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_RESET)
+  if(key_state == KeyNotPressed)
   {
-    last_button_tick = now;
-    
-    if (current_state == STATE_IDLE)
+    if(HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_RESET)
     {
-      /* 待機狀態 -> 倒計時狀態 */
-      current_state = STATE_COUNTING;
-      total_seconds = set_time_minutes * 60;
-      remaining_seconds = total_seconds;
       HAL_Delay(20);  // 防抖延時
+      if(HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_RESET)
+      {
+        key_state = KeyWasPressed;
+        if (current_state == STATE_IDLE)
+        {
+          /* 待機狀態 -> 倒計時狀態 */
+          current_state = STATE_COUNTING;
+          total_seconds = set_time_minutes * 60;
+          remaining_seconds = total_seconds;
+          HAL_Delay(20);  // 防抖延時
+        }
+        else if (current_state == STATE_COUNTING || current_state == STATE_ALARM)
+        {
+          /* 倒計時/提醒 -> 待機狀態 */
+          current_state = STATE_IDLE;
+          remaining_seconds = 0;
+          total_seconds = 0;
+          HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_4);
+          HAL_Delay(20);  // 防抖延時
+        }  
+      }
     }
-    else if (current_state == STATE_COUNTING || current_state == STATE_ALARM)
+  }
+  else //防止按鍵重入，必須等按鍵釋放後才能再次觸發
+  { 
+    if(HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_SET)
     {
-      /* 倒計時/提醒 -> 待機狀態 */
-      current_state = STATE_IDLE;
-      remaining_seconds = 0;
-      total_seconds = 0;
-      HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_4);
       HAL_Delay(20);  // 防抖延時
+      if(HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_SET)
+      {
+        key_state = KeyNotPressed;
+      }
     }
   }
 }
@@ -212,6 +225,32 @@ void alarm_task(void)
 {
   /* 在STATE_ALARM時，蜂鳴器已經啟動，等待按鈕重置 */
   /* 無需額外處理 */
+}
+
+void reset_task(void)
+{
+  if(key1_state == KeyNotPressed)
+  {
+    if(HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET)
+    {
+      HAL_Delay(20);  // 防抖延時
+      if(HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET)
+      {
+        HAL_NVIC_SystemReset();  // 觸發系統重置
+      }
+    }
+  }
+  else //防止按鍵重入，必須等按鍵釋放後才能再次觸發
+  { 
+    if(HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_SET)
+    {
+      HAL_Delay(20);  // 防抖延時
+      if(HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_SET)
+      {
+        key1_state = KeyNotPressed;
+      }
+    }
+  }
 }
 
 void setup(void)
@@ -251,6 +290,7 @@ void loop(void)
   button_task();       // 處理按鈕輸入
   timer_task();        // 處理倒計時邏輯
   alarm_task();        // 處理提醒邏輯
+  reset_task();        // 處理重置邏輯
   
   /* 根據狀態更新 OLED 顯示 */
   switch (current_state)
