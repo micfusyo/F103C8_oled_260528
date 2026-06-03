@@ -31,6 +31,9 @@ void ws2812_set_rgb(uint8_t led_id, uint8_t r, uint8_t g, uint8_t b);
 // 设置所有LED颜色
 void ws2812_set_all(uint32_t color);
 
+// 彩虹效果任务（非阻塞）
+void ws2812_rainbow(uint16_t delay_ms);
+
 // RGB转换为24bit颜色
 uint32_t rgb_to_color(uint8_t r, uint8_t g, uint8_t b);
 

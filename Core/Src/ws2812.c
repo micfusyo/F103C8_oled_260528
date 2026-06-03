@@ -20,7 +20,7 @@ void ws2812_update(void)
 	for (uint8_t led_id = 0; led_id < WS2812_NUM; led_id++)
 	{
 		_ws2812_color_current[led_id] = ws2812_color[led_id];
-		static uint8_t r, g, b;
+		uint8_t r, g, b;
 		color_to_rgb(_ws2812_color_current[led_id], &r, &g, &b);
 		uint16_t *p = ws2812_data + RST_PERIOD_NUM + led_id * 24;
 		for (uint8_t i = 0; i < 8; i++)
@@ -30,15 +30,13 @@ void ws2812_update(void)
 			p[i + 16] = (b << i) & (0x80) ? CODE_ONE_DUTY : CODE_ZERO_DUTY;
 		}
 	}
+
+	/* 如果之前的 DMA 尚未停止，先停止再重新啟動，保證整串資料完整傳輸 */
+	HAL_TIM_PWM_Stop_DMA(&htim3, TIM_CHANNEL_1);
 	HAL_TIM_PWM_Start_DMA(&htim3, TIM_CHANNEL_1, (uint32_t *)ws2812_data,
-						  RST_PERIOD_NUM + WS2812_NUM * 24);
+					  RST_PERIOD_NUM + WS2812_NUM * 24);
 }
 
-/**
- * @brief  通过渐变方式更新LED颜色（线性插值）
- * @param  steps: 渐变步数
- * @param  delay_ms: 每步之间的延迟时间（毫秒）
- */
 void ws2812_gradient(uint8_t steps, uint16_t delay_ms)
 {
 	static uint8_t start_r[WS2812_NUM], start_g[WS2812_NUM], start_b[WS2812_NUM];
@@ -160,4 +158,36 @@ void rainbow_effect(uint8_t steps, uint16_t delay_ms)
 		ws2812_update();
 		HAL_Delay(delay_ms);
 	}
+}
+
+void ws2812_rainbow(uint16_t delay_ms)
+{
+	static uint32_t last_tick = 0;
+	static int phase = 0;
+	uint32_t now = HAL_GetTick();
+
+	if (now - last_tick < delay_ms)
+	{
+		return;
+	}
+
+	last_tick = now;
+
+	float frequency = 0.2f;
+	int center = 128;
+	int width = 127;
+
+	for (uint8_t led_id = 0; led_id < WS2812_NUM; led_id++)
+	{
+		uint32_t color = rainbow_color(frequency, phase + led_id * 6, center, width);
+		ws2812_set(led_id, color);
+	}
+
+	phase++;
+	if (phase >= 360)
+	{
+		phase = 0;
+	}
+
+	ws2812_update();
 }

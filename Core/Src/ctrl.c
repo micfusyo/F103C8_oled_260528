@@ -4,6 +4,7 @@
 #include "stm32f1xx_hal_cortex.h"
 #include "string.h"
 #include "main.h"
+#include "ws2812.h"
 
 extern TIM_HandleTypeDef htim1;  // 編碼器使用的定時器
 extern TIM_HandleTypeDef htim4;  // 蜂鳴器使用的定時器
@@ -507,10 +508,17 @@ void timer_task(void)
 /* 提醒處理 */
 void alarm_task(void)
 {
-  /* 在 STATE_ALARM 時播放音樂 */
+  /* 在 STATE_ALARM 時播放音樂與 WS2812 彩虹效果 */
   if (current_state == STATE_ALARM)
   {
     play_music();
+    ws2812_rainbow(50);
+  }
+  else
+  {
+    /* 其他狀態時關閉 WS2812，避免殘留色彩 */
+    ws2812_set_all(0);
+    ws2812_update();
   }
 }
 
