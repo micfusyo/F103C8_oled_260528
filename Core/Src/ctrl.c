@@ -9,6 +9,7 @@
 #include "rs232.h"
 #include "music.h"
 
+#define VERSION "KK REMINDER V0.7"
 extern TIM_HandleTypeDef htim1;  // 編碼器使用的定時器
 
 static void update_oled_datetime(void);
@@ -17,9 +18,27 @@ static void update_oled_datetime(void);
 typedef enum
 {
   STATE_IDLE = 0,       // 待機中，等待編碼器調整
+  STATE_RTC_SETUP,      // RTC 年月日時分秒調整
   STATE_COUNTING,       // 倒計時中
   STATE_ALARM           // 提醒中
 } SystemState_t;
+
+typedef enum
+{
+  RTC_EDIT_YEAR = 0,
+  RTC_EDIT_MONTH,
+  RTC_EDIT_DAY,
+  RTC_EDIT_HOUR,
+  RTC_EDIT_MINUTE,
+  RTC_EDIT_SECOND,
+  RTC_EDIT_CONFIRM
+} RtcEditStep_t;
+
+typedef enum
+{
+  RTC_CONFIRM_CANCEL = 0,
+  RTC_CONFIRM_SAVE
+} RtcConfirmChoice_t;
 
 typedef enum
 {
@@ -41,6 +60,10 @@ uint16_t last_encoder_count = 0;        // 上次編碼器計數
 static uint32_t last_second_tick = 0;   // 上次秒級更新時間
 static uint32_t last_button_tick = 0;   // 按鈕防抖時間
 static uint8_t alarm_blink_flag = 0;    // 提醒閃爍標誌
+static int16_t encoder_step_accumulator = 0;  // TI2 模式下每格約 2 個計數，累積後再換算成一步
+static struct tm rtc_edit_time;
+static RtcEditStep_t rtc_edit_step = RTC_EDIT_YEAR;
+static RtcConfirmChoice_t rtc_confirm_choice = RTC_CONFIRM_SAVE;
 
 /* LED 輪流點亮變數 */
 typedef enum
@@ -51,6 +74,228 @@ typedef enum
 } LED_State_t;
 static LED_State_t current_led_state = LED_STATE_RED;
 static uint32_t last_led_tick = 0;      // LED 狀態更新時間戳
+
+static const char *rtc_weekday_text(int wday)
+{
+  static const char *const weekday_names[] = {
+    "SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"
+  };
+
+  if (wday < 0 || wday > 6)
+  {
+    return "???";
+  }
+
+  return weekday_names[wday];
+}
+
+static int rtc_days_in_month(int year, int month)
+{
+  static const int days_in_month[] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+  int days = days_in_month[month - 1];
+
+  if (month == 2)
+  {
+    if (((year % 4) == 0 && (year % 100) != 0) || ((year % 400) == 0))
+    {
+      days = 29;
+    }
+  }
+
+  return days;
+}
+
+static void rtc_edit_sync_weekday(void)
+{
+  time_t unix_time = mktime(&rtc_edit_time);
+  struct tm *normalized = gmtime(&unix_time);
+
+  if (normalized != NULL)
+  {
+    rtc_edit_time = *normalized;
+  }
+}
+
+static void rtc_edit_load_current_time(void)
+{
+  struct tm *now = KK_RTC_GetTime();
+
+  if (now != NULL)
+  {
+    rtc_edit_time = *now;
+  }
+  else
+  {
+    memset(&rtc_edit_time, 0, sizeof(rtc_edit_time));
+    rtc_edit_time.tm_year = 2025 - 1900;
+    rtc_edit_time.tm_mon = 0;
+    rtc_edit_time.tm_mday = 1;
+  }
+
+  rtc_edit_sync_weekday();
+}
+
+static void rtc_edit_begin(void)
+{
+  rtc_edit_load_current_time();
+  rtc_edit_step = RTC_EDIT_YEAR;
+  rtc_confirm_choice = RTC_CONFIRM_SAVE;
+  __HAL_TIM_SET_COUNTER(&htim1, 0);
+  last_encoder_count = 0;
+}
+
+static void rtc_edit_adjust_value(int delta)
+{
+  while (delta != 0)
+  {
+    int direction = (delta > 0) ? 1 : -1;
+
+    switch (rtc_edit_step)
+    {
+      case RTC_EDIT_YEAR:
+      {
+        int year = rtc_edit_time.tm_year + 1900;
+        year += direction;
+        if (year > 2099) year = 2000;
+        if (year < 2000) year = 2099;
+        rtc_edit_time.tm_year = year - 1900;
+        break;
+      }
+      case RTC_EDIT_MONTH:
+      {
+        int month = rtc_edit_time.tm_mon + 1;
+        month += direction;
+        if (month > 12) month = 1;
+        if (month < 1) month = 12;
+        rtc_edit_time.tm_mon = month - 1;
+
+        int days = rtc_days_in_month(rtc_edit_time.tm_year + 1900, month);
+        if (rtc_edit_time.tm_mday > days)
+        {
+          rtc_edit_time.tm_mday = days;
+        }
+        break;
+      }
+      case RTC_EDIT_DAY:
+      {
+        int year = rtc_edit_time.tm_year + 1900;
+        int month = rtc_edit_time.tm_mon + 1;
+        int days = rtc_days_in_month(year, month);
+        int day = rtc_edit_time.tm_mday + direction;
+
+        if (day > days) day = 1;
+        if (day < 1) day = days;
+        rtc_edit_time.tm_mday = day;
+        break;
+      }
+      case RTC_EDIT_HOUR:
+      {
+        int hour = rtc_edit_time.tm_hour + direction;
+        if (hour > 23) hour = 0;
+        if (hour < 0) hour = 23;
+        rtc_edit_time.tm_hour = hour;
+        break;
+      }
+      case RTC_EDIT_MINUTE:
+      {
+        int minute = rtc_edit_time.tm_min + direction;
+        if (minute > 59) minute = 0;
+        if (minute < 0) minute = 59;
+        rtc_edit_time.tm_min = minute;
+        break;
+      }
+      case RTC_EDIT_SECOND:
+      {
+        int second = rtc_edit_time.tm_sec + direction;
+        if (second > 59) second = 0;
+        if (second < 0) second = 59;
+        rtc_edit_time.tm_sec = second;
+        break;
+      }
+      case RTC_EDIT_CONFIRM:
+        rtc_confirm_choice = (rtc_confirm_choice == RTC_CONFIRM_SAVE) ? RTC_CONFIRM_CANCEL : RTC_CONFIRM_SAVE;
+        break;
+      default:
+        break;
+    }
+
+    rtc_edit_sync_weekday();
+    delta -= direction;
+  }
+}
+
+static void rtc_edit_next_step(void)
+{
+  if (rtc_edit_step < RTC_EDIT_CONFIRM)
+  {
+    rtc_edit_step = (RtcEditStep_t)(rtc_edit_step + 1);
+    return;
+  }
+
+  if (rtc_confirm_choice == RTC_CONFIRM_SAVE)
+  {
+    (void)KK_RTC_SetTime(&rtc_edit_time);
+  }
+
+  current_state = STATE_IDLE;
+  __HAL_TIM_SET_COUNTER(&htim1, 0);
+  last_encoder_count = 0;
+}
+
+static void update_oled_rtc_setup(void)
+{
+  OLED_NewFrame();
+
+  char buf[32];
+  sprintf(buf, "%04d/%02d/%02d", rtc_edit_time.tm_year + 1900, rtc_edit_time.tm_mon + 1, rtc_edit_time.tm_mday);
+  OLED_PrintString(0, 0, buf, &font16x16, OLED_COLOR_NORMAL);
+
+  sprintf(buf, "%02d:%02d:%02d", rtc_edit_time.tm_hour, rtc_edit_time.tm_min, rtc_edit_time.tm_sec);
+  OLED_PrintString(0, 16, buf, &font16x16, OLED_COLOR_NORMAL);
+
+  sprintf(buf, "WEEK: %s", rtc_weekday_text(rtc_edit_time.tm_wday));
+  OLED_PrintString(0, 32, buf, &font16x16, OLED_COLOR_NORMAL);
+
+  if (rtc_edit_step == RTC_EDIT_CONFIRM)
+  {
+    if (rtc_confirm_choice == RTC_CONFIRM_SAVE)
+    {
+      OLED_PrintString(0, 48, "CANCE  >SAVE", &font16x16, OLED_COLOR_NORMAL);
+    }
+    else
+    {
+      OLED_PrintString(0, 48, ">CANCE  SAVE", &font16x16, OLED_COLOR_NORMAL);
+    }
+  }
+  else
+  {
+    switch (rtc_edit_step)
+    {
+      case RTC_EDIT_YEAR:
+        OLED_PrintString(0, 48, "YEAR  KEY:NEXT", &font16x16, OLED_COLOR_NORMAL);
+        break;
+      case RTC_EDIT_MONTH:
+        OLED_PrintString(0, 48, "MONTH KEY:NEXT", &font16x16, OLED_COLOR_NORMAL);
+        break;
+      case RTC_EDIT_DAY:
+        OLED_PrintString(0, 48, "DAY   KEY:NEXT", &font16x16, OLED_COLOR_NORMAL);
+        break;
+      case RTC_EDIT_HOUR:
+        OLED_PrintString(0, 48, "HOUR  KEY:NEXT", &font16x16, OLED_COLOR_NORMAL);
+        break;
+      case RTC_EDIT_MINUTE:
+        OLED_PrintString(0, 48, "MIN   KEY:NEXT", &font16x16, OLED_COLOR_NORMAL);
+        break;
+      case RTC_EDIT_SECOND:
+        OLED_PrintString(0, 48, "SEC   KEY:NEXT", &font16x16, OLED_COLOR_NORMAL);
+        break;
+      default:
+        break;
+    }
+  }
+
+  OLED_ShowFrame();
+}
 
 
 
@@ -70,7 +315,7 @@ void update_oled_idle(void)
   if (now - last_blink < 100) return;  // 100ms 更新一次
   last_blink = now;
   OLED_NewFrame();
-  OLED_PrintString(0, 0, "KK REMINDER V0.6", &font16x16, OLED_COLOR_NORMAL);
+  OLED_PrintString(0, 0, VERSION, &font16x16, OLED_COLOR_NORMAL);
   OLED_PrintString(0, 16, "STATUS: IDLE    ", &font16x16, OLED_COLOR_NORMAL);
   char buf[32];
   // sprintf(buf, "TIMER:  %02d mins", set_time_minutes);
@@ -89,7 +334,7 @@ void update_oled_counting(void)
   if (now - last_update < 500) return;  // 500ms 更新一次
   last_update = now;
   OLED_NewFrame();
-  OLED_PrintString(0, 0, "KK REMINDER V0.6", &font16x16, OLED_COLOR_NORMAL);
+  OLED_PrintString(0, 0, VERSION, &font16x16, OLED_COLOR_NORMAL);
   OLED_PrintString(0, 16, "STATUS: COUNTING", &font16x16, OLED_COLOR_NORMAL);
   /* 顯示倒計時 */
   uint16_t minutes = remaining_seconds / 60;
@@ -143,16 +388,14 @@ static void update_oled_datetime(void)
   if (now == NULL) {
     return;
   }
-  char buf[32];
-  sprintf(buf, "%04d/%02d/%02d %02d/%02d", now->tm_year + 1900, now->tm_mon + 1, now->tm_mday, now->tm_hour, now->tm_min);
+  char buf[64];
+  snprintf(buf, sizeof(buf), "%04d/%02d/%02d %02d/%02d", now->tm_year + 1900, now->tm_mon + 1, now->tm_mday, now->tm_hour, now->tm_min);
   OLED_PrintString(0, 48, buf, &font16x16, OLED_COLOR_NORMAL);
 }
 
 /* 編碼器處理 */
 void encoder_task(void)
 {
-  if (current_state != STATE_IDLE) return;  // 只在待機狀態調整時間
-  
   uint16_t current_count = __HAL_TIM_GET_COUNTER(&htim1);
   
   /* 檢測編碼器變化 */
@@ -160,22 +403,42 @@ void encoder_task(void)
   
   if (delta != 0)
   {
-    if (delta > 0)
+    encoder_step_accumulator += delta;
+
+    while (encoder_step_accumulator >= 2)
     {
-      /* 逆時針旋轉，減少時間 */
-      if (set_time_minutes > 10)
+      if (current_state == STATE_IDLE)
       {
-        set_time_minutes--;
+        if (set_time_minutes > 10)
+        {
+          set_time_minutes--;
+        }
       }
+      else if (current_state == STATE_RTC_SETUP)
+      {
+        rtc_edit_adjust_value(-1);
+      }
+
+      encoder_step_accumulator -= 2;
     }
-    else
+
+    while (encoder_step_accumulator <= -2)
     {
-      /* 順時針旋轉，增加時間 */
-      if (set_time_minutes < 60)
+      if (current_state == STATE_IDLE)
       {
-        set_time_minutes++;
+        if (set_time_minutes < 60)
+        {
+          set_time_minutes++;
+        }
       }
+      else if (current_state == STATE_RTC_SETUP)
+      {
+        rtc_edit_adjust_value(1);
+      }
+
+      encoder_step_accumulator += 2;
     }
+
     last_encoder_count = current_count;
   }
 }
@@ -183,6 +446,59 @@ void encoder_task(void)
 /* 按鈕處理 */
 void button_task(void)
 {
+  if (current_state == STATE_RTC_SETUP)
+  {
+    if(key_state == KeyNotPressed)
+    {
+      if(HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_RESET)
+      {
+        HAL_Delay(20);  // 防抖延時
+        if(HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_RESET)
+        {
+          key_state = KeyWasPressed;
+          rtc_edit_next_step();
+          HAL_Delay(20);  // 防抖延時
+        }
+      }
+    }
+    else
+    {
+      if(HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_SET)
+      {
+        HAL_Delay(20);  // 防抖延時
+        if(HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_SET)
+        {
+          key_state = KeyNotPressed;
+        }
+      }
+    }
+
+    if(key2_state == KeyNotPressed)
+    {
+      if(HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_RESET)
+      {
+        HAL_Delay(20);  // 防抖延時
+        if(HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_RESET)
+        {
+          key2_state = KeyWasPressed;
+        }
+      }
+    }
+    else
+    {
+      if(HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_SET)
+      {
+        HAL_Delay(20);  // 防抖延時
+        if(HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_SET)
+        {
+          key2_state = KeyNotPressed;
+        }
+      }
+    }
+
+    return;
+  }
+
   if(key_state == KeyNotPressed)
   {
     if(HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_RESET)
@@ -219,6 +535,34 @@ void button_task(void)
       if(HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_SET)
       {
         key_state = KeyNotPressed;
+      }
+    }
+  }
+
+  if(key2_state == KeyNotPressed)
+  {
+    if(HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_RESET)
+    {
+      HAL_Delay(20);  // 防抖延時
+      if(HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_RESET)
+      {
+        if (current_state == STATE_IDLE)
+        {
+          current_state = STATE_RTC_SETUP;
+          rtc_edit_begin();
+        }
+        key2_state = KeyWasPressed;
+      }
+    }
+  }
+  else
+  {
+    if(HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_SET)
+    {
+      HAL_Delay(20);  // 防抖延時
+      if(HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_SET)
+      {
+        key2_state = KeyNotPressed;
       }
     }
   }
@@ -360,7 +704,7 @@ void setup(void)
   HAL_Delay(60);  // 等待 OLED 穩定
   OLED_Init();
   OLED_NewFrame();
-  OLED_PrintString(0, 0, "KK REMINDER V0.6", &font16x16, OLED_COLOR_NORMAL);
+  OLED_PrintString(0, 0, VERSION, &font16x16, OLED_COLOR_NORMAL);
   OLED_PrintString(0, 16, "STATUS: IDLE    ", &font16x16, OLED_COLOR_NORMAL);
   OLED_PrintString(0, 32, "TIMER: 15:00mins", &font16x16, OLED_COLOR_NORMAL);
   // OLED_PrintString(0, 48, "COUNTDOWN: 15:00", &font16x16, OLED_COLOR_NORMAL);
@@ -389,6 +733,9 @@ void loop(void)
   {
     case STATE_IDLE:
       update_oled_idle();
+      break;
+    case STATE_RTC_SETUP:
+      update_oled_rtc_setup();
       break;
     case STATE_COUNTING:
       update_oled_counting();
