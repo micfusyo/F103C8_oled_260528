@@ -389,7 +389,7 @@ static void update_oled_datetime(void)
     return;
   }
   char buf[64];
-  snprintf(buf, sizeof(buf), "%04d/%02d/%02d %02d/%02d", now->tm_year + 1900, now->tm_mon + 1, now->tm_mday, now->tm_hour, now->tm_min);
+  snprintf(buf, sizeof(buf), "%04d/%02d/%02d %02d:%02d", now->tm_year + 1900, now->tm_mon + 1, now->tm_mday, now->tm_hour, now->tm_min);
   OLED_PrintString(0, 48, buf, &font16x16, OLED_COLOR_NORMAL);
 }
 
