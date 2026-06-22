@@ -135,11 +135,15 @@ struct tm *KK_RTC_GetTime() {
 }
 
 void KK_RTC_Init(){
-	uint32_t initFlag = HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1);
-	if(initFlag == RTC_INIT_FLAG) return;
+	hrtc.Instance = RTC;
+	hrtc.Init.AsynchPrediv = RTC_AUTO_1_SECOND;
+	hrtc.Init.OutPut = RTC_OUTPUTSOURCE_ALARM;
 	if (HAL_RTC_Init(&hrtc) != HAL_OK){
 		Error_Handler();
 	}
+
+	uint32_t initFlag = HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1);
+	if(initFlag == RTC_INIT_FLAG) return;
 	struct tm time = {
 		  .tm_year = 2025 - 1900,
 		  .tm_mon = 1 - 1,

@@ -9,7 +9,7 @@
 #include "rs232.h"
 #include "music.h"
 
-#define VERSION "KK REMINDER V0.7"
+#define VERSION "KK REMINDER V0.8"
 extern TIM_HandleTypeDef htim1;  // 編碼器使用的定時器
 
 static void update_oled_datetime(void);
