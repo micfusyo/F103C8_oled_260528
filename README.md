@@ -226,6 +226,30 @@ openocd -f interface/stlink.cfg -f target/stm32f1x.cfg -c "program build/Debug/F
 
 ---
 
+## 第三方授權與歸屬聲明 / Third-Party License & Attribution
+
+本專案使用了以下第三方庫，特此聲明授權歸屬：
+
+### 波特律動 (Baud Dance) OLED 驅動庫
+
+- **使用文件**：`shared_libs/Src/oled.c`、`shared_libs/Src/font.c`、`shared_libs/Inc/oled.h`、`shared_libs/Inc/font.h`
+- **來源**：[波特律動 (Baud Dance)](https://docs.baud-dance.com/docs/stm32/intro/) — keysking STM32 教程學習套件配套 OLED (CH1116) 驅動
+- **授權**：MIT License（oled.c 檔案頭明確聲明 `@license MIT License`）
+- **Copyright**：Copyright (c) 波特律動 (keysking 博哥在學習)
+
+依據 MIT License 授權條款，本專案保留上述授權聲明及版权声明。波特律動的開源 OLED 驅動庫為本專案的顯示功能提供了基礎實現，特此致謝。
+
+### 免責聲明 / Disclaimer
+
+本專案中的第三方庫（OLED 驅動及字模）均按「現狀」（as-is）提供。本專案維護者及貢獻者：
+
+1. **不提供任何明示或默示的擔保**，包括但不限於對適銷性、特定用途適用性和不侵權的擔保。
+2. **不對因使用本專案中的代碼或第三方庫所導致的任何直接、間接、附帶、特殊、懲罰性或後果性損害承擔責任**，包括但不限於利潤損失、資料丟失、業務中斷或硬體損壞。
+3. **font.c（字模庫）的授權條款未在原始碼中明確聲明**。本專案將其視為與 oled.c 配套分發的組件，遵循相同的 MIT License 精神使用。如對字模庫的授權有疑問，請直接聯繫波特律動確認。
+4. 使用者應自行承擔將本專案燒錄至硬體設備時的一切風險，包括但不限於晶片損壞、電路板故障或其他硬體問題。
+
+---
+
 ## 版本資訊 / Versioning
 
 - **目前版本**：v0.9
