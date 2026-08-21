@@ -6,7 +6,7 @@
 
 ## 專案簡介 / Project Overview
 
-本專案是一個基於 **KEYSKING STM32F103C8T6 學習板** 開發的**智慧喝水提醒裝置**。該裝置利用狀態機設計，支援透過旋轉編碼器靈活設定倒數時間，並在 OLED 顯示器上即時回報狀態。當時間到時，蜂鳴器會播放經典提示樂曲，同時 WS2812B 燈條同步輸出彩虹動態特效，提醒使用者定時補充水分。
+本專案是一個基於 **KEYSKING STM32F103C8T6 學習板** 開發的**智慧喝水提醒裝置**。該裝置利用狀態機設計，支援透過旋轉編碼器靈活設定倒數時間，並在 OLED 顯示器上即時回報狀態。當時間到時，蜂鳴器會播放貝多芬經典名曲《給愛麗絲》(Für Elise)，同時 WS2812B 燈條同步輸出彩虹動態特效，提醒使用者定時補充水分。
 
 裝置另整合了內部 RTC（Real Time Clock）日曆顯示，支援直接透過硬體按鍵與編碼器進入設定畫面，以年、月、日、時、分、秒的精度動態調校系統時間，具備完整的儲存/取消寫入機制。
 
@@ -14,7 +14,7 @@
 
 ## 系統架構與狀態機 / System Architecture & State Machine
 
-整個系統基於分時任務輪詢架構，在主循環 [loop](file:///Users/mic/Projects/STM32/F103C8_oled_260528/Core/Src/ctrl.c#L721) 中調度各項硬體處理模組，並透過核心狀態機 [SystemState_t](file:///Users/mic/Projects/STM32/F103C8_oled_260528/Core/Src/ctrl.c#L18-L24) 來管理當前的運作狀態。
+整個系統基於分時任務輪詢架構，在主循環 [loop](Core/Src/ctrl.c#L721) 中調度各項硬體處理模組，並透過核心狀態機 [SystemState_t](Core/Src/ctrl.c#L18-L24) 來管理當前的運作狀態。
 
 ### 1. 系統架構圖
 ```mermaid
@@ -146,13 +146,20 @@ F103C8_oled_260528/
 │       ├── main.c        # 系統入口點，呼叫 setup() 與 loop()
 │       ├── ctrl.c        # 主狀態機、按鍵防抖、時間計算與 OLED 介面渲染
 │       ├── kk_rtc.c      # 封裝讀寫 RTC 暫存器與 Unix 時間轉換
-│       ├── music.c       # 定時器 PWM 音符頻率更新與《莫愁小姿》曲譜數據
+│       ├── music.c       # 定時器 PWM 音符頻率更新與《給愛麗絲》(Für Elise) 曲譜數據
 │       ├── ws2812.c      # WS2812 彩虹色彩與 DMA 發送函式
 │       ├── rs232.c       # UART 發送/接收與 _write (stdout 重新導向)
 │       ├── stm32f1xx_it.c# 中斷服務常式 (ISR)
 │       └── rtc.c, tim.c, usart.c, dma.c, gpio.c # HAL 外設初始化實現
 ├── Drivers/              # STM32 HAL 庫與 CMSIS 底層驅動
 ├── cmake/                # CMake 交叉編譯與 STM32CubeMX 自動生成腳本
+├── shared_libs/          # 波特律動 (Baud Dance) OLED 驅動與字模庫
+│   ├── Inc/
+│   │   ├── oled.h        # CH1116 OLED 驅動頭文件
+│   │   └── font.h        # 字體結構體定義
+│   └── Src/
+│       ├── oled.c        # CH1116 OLED I2C 驅動實現
+│       └── font.c        # ASCII 與中文字模數據
 ├── CMakeLists.txt        # 專案 CMake 建置配置
 ├── CMakePresets.json     # CMake 編譯預設配置
 ├── STM32F103XX_FLASH.ld  # 連結器腳本 (定義 Flash 與 SRAM 佈局)
@@ -160,18 +167,18 @@ F103C8_oled_260528/
 ```
 
 > [!NOTE]
-> 專案中的 OLED 驅動與基礎字模檔案位於同級目錄的 `../shared_libs` 中（包括 `font.c` 與 `oled.c`），編譯時透過 [CMakeLists.txt](file:///Users/mic/Projects/STM32/F103C8_oled_260528/CMakeLists.txt#L48-L61) 自動引入其包含路徑與源代碼。
+> 專案中的 OLED 驅動與基礎字模檔案位於專案內的 `shared_libs/` 目錄中（包括 `font.c` 與 `oled.c`），使用波特律動 (Baud Dance) CH1116 OLED 驅動庫，編譯時透過 CMakeLists.txt 自動引入其包含路徑與源代碼。
 
 ---
 
 ## 核心源碼文件導覽 / Source Code Navigation
 
 若要深入理解專案，請參閱以下原始碼檔案：
-- **控制核心與介面渲染**：[ctrl.c](file:///Users/mic/Projects/STM32/F103C8_oled_260528/Core/Src/ctrl.c) — 包含狀態機切換、按鍵掃描 [button_task](file:///Users/mic/Projects/STM32/F103C8_oled_260528/Core/Src/ctrl.c#L447)、編碼器阻尼累加器 [encoder_task](file:///Users/mic/Projects/STM32/F103C8_oled_260528/Core/Src/ctrl.c#L397) 與 RTC 設定畫面繪製 [update_oled_rtc_setup](file:///Users/mic/Projects/STM32/F103C8_oled_260528/Core/Src/ctrl.c#L245)。
-- **RTC 驅動模組**：[kk_rtc.c](file:///Users/mic/Projects/STM32/F103C8_oled_260528/Core/Src/kk_rtc.c) — 實作底層的初始化 [KK_RTC_Init](file:///Users/mic/Projects/STM32/F103C8_oled_260528/Core/Src/kk_rtc.c#L137)、時間戳讀取 [KK_RTC_GetTime](file:///Users/mic/Projects/STM32/F103C8_oled_260528/Core/Src/kk_rtc.c#L132) 與寫入功能 [KK_RTC_SetTime](file:///Users/mic/Projects/STM32/F103C8_oled_260528/Core/Src/kk_rtc.c#L123)。
-- **音樂發聲模組**：[music.c](file:///Users/mic/Projects/STM32/F103C8_oled_260528/Core/Src/music.c) — 提供非阻塞式的樂譜輪詢撥放函式 [play_music](file:///Users/mic/Projects/STM32/F103C8_oled_260528/Core/Src/music.c#L210) 與音符頻率映射。
-- **WS2812 炫彩模組**：[ws2812.c](file:///Users/mic/Projects/STM32/F103C8_oled_260528/Core/Src/ws2812.c) — 包含基於 HSV/RGB 彩虹色彩算法的 [ws2812_rainbow](file:///Users/mic/Projects/STM32/F103C8_oled_260528/Core/Src/ws2812.c#L163) 及 DMA 更新函式。
-- **串口重導向模組**：[rs232.c](file:///Users/mic/Projects/STM32/F103C8_oled_260528/Core/Src/rs232.c) — 提供 `_write` 的複寫實現，將 `printf` 導流至 `USART2`。
+- **控制核心與介面渲染**：[ctrl.c](Core/Src/ctrl.c) — 包含狀態機切換、按鍵掃描 [button_task](Core/Src/ctrl.c#L447)、編碼器阻尼累加器 [encoder_task](Core/Src/ctrl.c#L397) 與 RTC 設定畫面繪製 [update_oled_rtc_setup](Core/Src/ctrl.c#L245)。
+- **RTC 驅動模組**：[kk_rtc.c](Core/Src/kk_rtc.c) — 實作底層的初始化 [KK_RTC_Init](Core/Src/kk_rtc.c#L137)、時間戳讀取 [KK_RTC_GetTime](Core/Src/kk_rtc.c#L132) 與寫入功能 [KK_RTC_SetTime](Core/Src/kk_rtc.c#L123)。
+- **音樂發聲模組**：[music.c](Core/Src/music.c) — 提供非阻塞式的樂譜輪詢撥放函式 [play_music](Core/Src/music.c#L210) 與音符頻率映射。
+- **WS2812 炫彩模組**：[ws2812.c](Core/Src/ws2812.c) — 包含基於 HSV/RGB 彩虹色彩算法的 [ws2812_rainbow](Core/Src/ws2812.c#L163) 及 DMA 更新函式。
+- **串口重導向模組**：[rs232.c](Core/Src/rs232.c) — 提供 `_write` 的複寫實現，將 `printf` 導流至 `USART2`。
 
 ---
 
@@ -212,7 +219,7 @@ openocd -f interface/stlink.cfg -f target/stm32f1x.cfg -c "program build/Debug/F
 | 異常現象 | 可能原因 | 建議排查步驟 |
 | :--- | :--- | :--- |
 | **OLED 螢幕全黑** | 1. I2C 連線鬆脫或 SCL/SDA 接反<br>2. 缺乏外部上拉電阻<br>3. 供電電壓不穩（應為 3.3V） | - 用示波器或邏輯分析儀測量 PB6/PB7 是否有時鐘和數據信號<br>- 檢查硬體接線並確認 OLED 地址是否為預設的 0x78 |
-| **旋轉編碼器無反應或無方向性** | 1. TIM1 未成功啟動編碼器計數模式<br>2. PA8/PA9 接線損壞<br>3. 編碼器信號抖動過大 | - 檢查 [ctrl.c](file:///Users/mic/Projects/STM32/F103C8_oled_260528/Core/Src/ctrl.c#L694) 中 `HAL_TIM_Encoder_Start` 是否正確執行<br>- 加裝 104 旁路電容對編碼器進行硬體濾波 |
+| **旋轉編碼器無反應或無方向性** | 1. TIM1 未成功啟動編碼器計數模式<br>2. PA8/PA9 接線損壞<br>3. 編碼器信號抖動過大 | - 檢查 [ctrl.c](Core/Src/ctrl.c#L694) 中 `HAL_TIM_Encoder_Start` 是否正確執行<br>- 加裝 104 旁路電容對編碼器進行硬體濾波 |
 | **鬧鐘響起時蜂鳴器無聲音** | 1. `TIM4` 比較暫存器配置不正確<br>2. 蜂鳴器非被動式或引腳 PB9 未設定為複用推挽輸出 | - 測量 PB9 引腳在提醒狀態下是否輸出了相應頻率的 PWM 方波<br>- 確認蜂鳴器為「被動式蜂鳴器」（需要交流頻率驅動），主板上的跳線帽是否正確插上 |
 | **WS2812 燈條不亮或顏色異常** | 1. 驅動電壓低於 5V（WS2812 供電最好為 5V）<br>2. TIM3 DMA 設定與代碼配置時序不符 | - 確保燈條 VCC 接在 5V 電源上而非 3.3V<br>- 檢查 `CODE_ONE_DUTY` 與 `CODE_ZERO_DUTY` 暫存器數值是否被意外修改 |
 | **每次斷電重開後 RTC 時間重置** | 未接入備份電池（VBAT 引腳未供電），或 `RTC_BKP_DR1` 未正確寫入標誌 | - 在 KEYBOARD/LEARNING Board 的 VBAT 插針上接上 CR1220 鈕扣電池<br>- 確保 `KK_RTC_Init` 流程正常運作 |
@@ -221,7 +228,7 @@ openocd -f interface/stlink.cfg -f target/stm32f1x.cfg -c "program build/Debug/F
 
 ## 版本資訊 / Versioning
 
-- **目前版本**：v0.8
-- **最後修訂日期**：2026-06-22
+- **目前版本**：v0.9
+- **最後修訂日期**：2026-08-21
 - **維護者**：mic (STM32 Embedded Developer)
 - **授權協議**：MIT License
