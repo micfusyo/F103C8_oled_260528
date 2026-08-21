@@ -1,15 +1,14 @@
 #include "ctrl.h"
+#include "main.h"
 #include "oled.h"
 #include "stdio.h"
-#include "stm32f1xx_hal_cortex.h"
 #include "string.h"
-#include "main.h"
 #include "ws2812.h"
 #include "kk_rtc.h"
 #include "rs232.h"
 #include "music.h"
 
-#define VERSION "KK REMINDER V0.8"
+#define VERSION "KK REMINDER V0.9"
 extern TIM_HandleTypeDef htim1;  // 編碼器使用的定時器
 
 static void update_oled_datetime(void);

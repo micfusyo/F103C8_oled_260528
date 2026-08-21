@@ -45,19 +45,19 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared_libs/Src/font.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared_libs/Src/oled.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../${CMAKE_PROJECT_NAME}/Core/Src/ctrl.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../${CMAKE_PROJECT_NAME}/Core/Src/kk_rtc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../${CMAKE_PROJECT_NAME}/Core/Src/ws2812.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../${CMAKE_PROJECT_NAME}/Core/Src/rs232.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../${CMAKE_PROJECT_NAME}/Core/Src/music.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/shared_libs/Src/font.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/shared_libs/Src/oled.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/ctrl.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/kk_rtc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/ws2812.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/rs232.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/music.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared_libs/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/shared_libs/Inc
 )
 
 # Add project symbols (macros)
